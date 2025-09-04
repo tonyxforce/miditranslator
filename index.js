@@ -4,6 +4,14 @@ const { constants, midi } = require("./consts.js");
 
 var channel = 0;
 
+var ledIDs = {
+    mute: [16, 17, 18, 19, 20, 21, 22, 23],
+    solo: [8, 9, 10, 11, 12, 13, 14, 15],
+    rec: [0, 1, 2, 3, 4, 5, 6, 7],
+    select: [24, 25, 26, 27, 28, 29, 30, 31],
+    bottom: [94, 93, 95, 91, 92, 46, 47, 96, 97, 98],
+};
+
 function openPortByName(device, name) {
     var portNames = [];
     for (let a = 0; a < device.getPortCount(); a++) {
@@ -31,35 +39,18 @@ function logMessage(data) {
     const toConsole = new midi.Output();
     const fromConsole = new midi.Input();
     const fromSoftware = new midi.Input();
-    toSoftware.controlChange = (ch, num, val) => {
-        toSoftware.sendMessage([(constants.commands.CC << 4) | ch, num, val]);
-    };
-    toSoftware.noteOn = (ch, note, velocity) => {
-        toSoftware.sendMessage([
-            (constants.commands.NN << 4) | ch,
-            note,
-            velocity,
-        ]);
-    };
-    toSoftware.noteOff = (ch, note) => {
-        toSoftware.sendMessage([(constants.commands.NF << 4) | ch, note, 0]);
-    };
-    toSoftware.polyAfterTouch = (ch, note, velocity) => {
-        toSoftware.sendMessage(
-            [(constants.commands.PA << 4) | ch],
-            note,
-            velocity
-        );
-    };
-    toSoftware.programChange = (ch, num) => {};
-    toSoftware.aftertouchChange = (ch, val) => {};
-    toSoftware.pitchBendChange = (ch, val) => {};
 
-    //import midi from "midi";
+    function turnLedOn(faderNum, arr) {
+        toConsole.sendMessage([constants.commands.NN + 0, arr[faderNum], 127]);
+        toConsole.sendMessage([constants.commands.NF + 0, arr[faderNum], 127]);
+    }
+
+    function turnLedOff(faderNum, arr) {
+        toConsole.sendMessage([constants.commands.NN + 0, arr[faderNum], 0]);
+        toConsole.sendMessage([constants.commands.NF + 0, arr[faderNum], 0]);
+    }
 
     const delay = (ms) => new Promise((r) => setTimeout(r, ms));
-
-    // Set up a new output.
 
     var count = toSoftware.getPortCount();
     console.log("output devices");
@@ -83,7 +74,6 @@ function logMessage(data) {
     var commands = constants.commands;
 
     fromSoftware.on("message", (deltaTime, message) => {
-        logMessage(message);
         const status = message[0];
         const command = status & 0b11110000; // upper nibble
         const channel = status & 0b00001111;
@@ -94,12 +84,19 @@ function logMessage(data) {
             const velocity = message[2];
 
             // Build both Note On and Note Off messages
-            const noteOn = [commands.NF | channel, note, velocity];
-            const noteOff = [commands.NN | channel, note, 0]; // velocity usually 0
 
-            // Send both (On first, Off second)
-            toConsole.sendMessage(noteOn);
-            toConsole.sendMessage(noteOff);
+            console.log("fromSoftware", message);
+
+            toConsole.sendMessage([
+                constants.commands.NN + 0,
+                message[1],
+                message[2],
+            ]);
+            toConsole.sendMessage([
+                constants.commands.NF + 0,
+                message[1],
+                message[2],
+            ]);
         } else {
             // Everything else unchanged
             toConsole.sendMessage(message);
@@ -131,6 +128,9 @@ function logMessage(data) {
 
             toSoftware.sendMessage(newMessage);
         } else {
+            if (command == commands.NN || command == commands.NF) {
+                console.log("fromConsole", message);
+            }
             // Pass through everything else unchanged
             toSoftware.sendMessage(message);
         }
@@ -142,30 +142,34 @@ function logMessage(data) {
     await delay(100);
     toConsole.sendMessage([constants.commands.NF + 0, 129, 0]);
 
+    console.log("ready");
+    for (let a = 0; a < 8; a++) {
+        turnLedOn(a, ledIDs.mute);
+        turnLedOn(a, ledIDs.solo);
+        turnLedOn(a, ledIDs.rec);
+        turnLedOn(a, ledIDs.select);
+        await delay(100);
+    }
+    for (let a = 0; a < 11; a++) {
+        turnLedOn(a, ledIDs.bottom);
+        await delay(100);
+    }
+
+    await delay(500);
+
+    for (let a = 7; a >= 0; a--) {
+        turnLedOff(a, ledIDs.mute);
+        turnLedOff(a, ledIDs.solo);
+        turnLedOff(a, ledIDs.rec);
+        turnLedOff(a, ledIDs.select);
+        await delay(100);
+    }
+    for (let a = 0; a < 11; a++) {
+        turnLedOff(a, ledIDs.bottom);
+        await delay(100);
+    }
+
     /*
-
-    for (let a = 0; a < 32; a++) {
-        console.log(`turning on ${a}`);
-        toConsole.sendMessage([constants.commands.NF + 0, a, 127]);
-        await delay(1);
-    }
-    for (let a = 91; a < 96; a++) {
-        console.log(`turning on ${a}`);
-				toConsole.sendMessage([constants.commands.NF + 0, a, 127]);
-        await delay(1);
-    }
-
-    for (let a = 91; a < 96; a++) {
-        console.log(`turning off ${a}`);
-				toConsole.sendMessage([constants.commands.NF + 0, a, 0]);
-        await delay(1);
-    }
-    for (let a = 0; a < 32; a++) {
-        console.log(`turning off ${a}`);
-        toConsole.sendMessage([constants.commands.NF + 0, a, 0]); 
-        await delay(1);
-    }
-
 		     console.log(`CC ${0} ${0}`);
     output.sendMessage([(constants.commands.CC) + 0, 0, 0]);
     for (let a = 49; a < 58; a++) {
@@ -175,6 +179,4 @@ function logMessage(data) {
             await delay(1);
         }
     } */
-    // Close the port when done.
-    //output.closePort();
 })();
