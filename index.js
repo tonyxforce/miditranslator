@@ -12,7 +12,7 @@ var ledIDs = {
     bottom: [94, 93, 95, 91, 92, 46, 47, 96, 97, 98],
 };
 
-function openPortByName(device, name) {
+function openPortByName(device, name, type) {
     var portNames = [];
     for (let a = 0; a < device.getPortCount(); a++) {
         portNames.push(device.getPortName(a));
@@ -22,15 +22,15 @@ function openPortByName(device, name) {
         ? name
         : portNames.find((n) => n.toLowerCase().includes(name.toLowerCase()));
 
-    console.log(`Opening port "${portName}"`);
+    console.log(`Opening ${type ? type + " " : ""}port "${portName}"`);
     device.openPort(portNames.indexOf(portName));
 }
 
-function logMessage(data) {
+function logMessage(data, type) {
     data[0] = data[0].toString(2).padStart(8, "0");
     data[1] = data[1].toString(2).padStart(8, "0");
     data[2] = data[2].toString(2).padStart(8, "0");
-    console.log(`m: ${data}`);
+    console.log(`${type ? type : "m"}: ${data}`);
 }
 
 (async () => {
@@ -53,23 +53,23 @@ function logMessage(data) {
     const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
     var count = toSoftware.getPortCount();
-    console.log("output devices");
+    console.log("output devices:");
     for (let i = 0; i < count; i++) {
         // Get the name of a specified output port.
-        console.log(toSoftware.getPortName(i));
+        console.log("\t", toSoftware.getPortName(i));
     }
 
     var count = fromConsole.getPortCount();
-    console.log("input devices");
+    console.log("input devices:");
     for (let i = 0; i < count; i++) {
         // Get the name of a specified output port.
-        console.log(fromConsole.getPortName(i));
+        console.log("\t", fromConsole.getPortName(i));
     }
 
-    openPortByName(toSoftware, "consoleout");
-    openPortByName(fromSoftware, "consolein");
-    openPortByName(fromConsole, "SMC-Mixer");
-    openPortByName(toConsole, "SMC-Mixer");
+    openPortByName(toSoftware, "consoleout", "control output");
+    openPortByName(fromSoftware, "consolein", "feedback input");
+    openPortByName(fromConsole, "SMC-Mixer", "control input");
+    openPortByName(toConsole, "SMC-Mixer", "feedback output");
 
     var commands = constants.commands;
 
@@ -79,24 +79,13 @@ function logMessage(data) {
         const channel = status & 0b00001111;
 
         if (command === commands.NF || command === commands.NN) {
-            // Note message format: [status, note, velocity]
             const note = message[1];
             const velocity = message[2];
 
-            // Build both Note On and Note Off messages
-
             console.log("fromSoftware", message);
 
-            toConsole.sendMessage([
-                constants.commands.NN + 0,
-                message[1],
-                message[2],
-            ]);
-            toConsole.sendMessage([
-                constants.commands.NF + 0,
-                message[1],
-                message[2],
-            ]);
+            toConsole.sendMessage([constants.commands.NN + 0, note, velocity]);
+            toConsole.sendMessage([constants.commands.NF + 0, note, velocity]);
         } else {
             // Everything else unchanged
             toConsole.sendMessage(message);
@@ -128,7 +117,11 @@ function logMessage(data) {
 
             toSoftware.sendMessage(newMessage);
         } else {
-            if (command == commands.NN || command == commands.NF) {
+            if (
+                command == commands.NN ||
+                command == commands.NF ||
+                command == commands.CC
+            ) {
                 console.log("fromConsole", message);
             }
             // Pass through everything else unchanged
@@ -137,12 +130,7 @@ function logMessage(data) {
     });
     // Send a MIDI message.
 
-    console.log("starting");
-    toConsole.sendMessage([constants.commands.NF + 0, 129, 127]);
-    await delay(100);
-    toConsole.sendMessage([constants.commands.NF + 0, 129, 0]);
-
-    console.log("ready");
+    console.log("Turning on leds");
     for (let a = 0; a < 8; a++) {
         turnLedOn(a, ledIDs.mute);
         turnLedOn(a, ledIDs.solo);
@@ -150,12 +138,14 @@ function logMessage(data) {
         turnLedOn(a, ledIDs.select);
         await delay(100);
     }
+    console.log("Turning on bottom leds");
     for (let a = 0; a < 11; a++) {
         turnLedOn(a, ledIDs.bottom);
         await delay(100);
     }
 
     await delay(500);
+    console.log("Turning off leds");
 
     for (let a = 7; a >= 0; a--) {
         turnLedOff(a, ledIDs.mute);
@@ -164,19 +154,22 @@ function logMessage(data) {
         turnLedOff(a, ledIDs.select);
         await delay(100);
     }
+
+    console.log("Turning off bottom leds");
     for (let a = 0; a < 11; a++) {
         turnLedOff(a, ledIDs.bottom);
         await delay(100);
     }
 
-    /*
-		     console.log(`CC ${0} ${0}`);
-    output.sendMessage([(constants.commands.CC) + 0, 0, 0]);
-    for (let a = 49; a < 58; a++) {
-        for (let b = 0; b < 128; b++) {
-            console.log(`CC ${a} ${b}`);
-            output.sendMessage([(constants.commands.CC) + a, 0, b]);
-            await delay(1);
-        }
+    // Ignore sysex, timing, and active sensing messages
+    fromSoftware.ignoreTypes(true, true, true);
+    fromConsole.ignoreTypes(true, true, true);
+
+    console.log("Ready!");
+
+    /*     console.log(`CC ${0} ${0}`);
+	for(let b = 0; b<0b00001111;b++)
+    for (let a = 0; a < 255; a++) {
+        toConsole.sendMessage([constants.commands.CC + b, a, 127]);
     } */
 })();

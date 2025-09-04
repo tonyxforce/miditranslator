@@ -111,13 +111,13 @@ const notes = {
 };
 
 const commands = {
-    NN: 0b10000000,
-    NF: 0b10010000,
-    PA: 0b10100000,
-    CC: 0b10110000,
-    PC: 0b11000000,
-    AT: 0b11010000,
-    PB: 0b11100000,
+    NN: 0b10000000, // Note on 128
+    NF: 0b10010000, // Note off 144
+    PA: 0b10100000, // Polyphonic Aftertouch 160
+    CC: 0b10110000, // Control Change 176
+    PC: 0b11000000, // Program Change 192
+    AT: 0b11010000, // AfterTouch 208
+    PB: 0b11100000, // Pitch Bend 224
 };
 
 module.exports.constants = {
