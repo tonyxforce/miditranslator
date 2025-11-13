@@ -1,17 +1,19 @@
 {
   "dependencies": {
-    "midi": "^2.0.0"
+    "@types/midi": "^2.0.4",
+    "midi": "^2.0.0",
+    "typescript": "^5.9.3"
   },
   "name": "miditranslator",
   "version": "1.0.0",
   "main": "index.js",
-  "devDependencies": {},
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "tsc && node ./dist/index.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
-	"type":"commonjs"
+  "type": "commonjs"
 }
