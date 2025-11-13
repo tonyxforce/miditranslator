@@ -6,7 +6,7 @@ type Enumerate<N extends number, Acc extends number[] = []> = Acc['length'] exte
   ? Acc[number]
   : Enumerate<N, [...Acc, Acc['length']]>
 
-type Range<F extends number, T extends number> = Exclude<Enumerate<T>, Enumerate<F>>
+export type Range<F extends number, T extends number> = Exclude<Enumerate<T>, Enumerate<F>>
 
 const notes = {
     G9: 127,
@@ -190,16 +190,17 @@ class MIDIInput extends midi.Input {
         super();
         this.device = new midi.Input();
     }
-    openPort(name: string | number): void {
+    openPort(name: string | number): this {
         if (typeof name === "number") {
             this.device.openPort(name);
-            return;
+            return this;
         }
         var portNames = this.listPorts();
         var portName = portNames.includes(name)
             ? name
             : portNames.find((n) => n.toLowerCase().includes(name.toLowerCase())) as string;
         this.device.openPort(portNames.indexOf(portName));
+        return this;
     }
     listPorts(): string[] {
         return Array.from(
@@ -213,9 +214,8 @@ class MIDIInput extends midi.Input {
     getPortName(index: number): string {
         return this.device.getPortName(index);
     }
-    on(event: "message", callback: (deltaTime: number, message: midi.MidiMessage) => void): this {
-        this.device.on("message", callback);
-        return this;
+    on(event: "message", callback: (deltaTime: number, message: midi.MidiMessage) => void): any {
+        return this.device.on(event, callback) as midi.Input;
     }
 }
 

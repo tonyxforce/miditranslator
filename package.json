@@ -1,9 +1,4 @@
 {
-  "dependencies": {
-    "@types/midi": "^2.0.4",
-    "midi": "^2.0.0",
-    "typescript": "^5.9.3"
-  },
   "name": "miditranslator",
   "version": "1.0.0",
   "main": "index.js",
@@ -11,9 +6,14 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "tsc && node ./dist/index.js"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["midi", "SMC-Mixer"],
+  "author": "tonyxforce",
   "license": "ISC",
-  "description": "",
-  "type": "commonjs"
+  "description": "A script to connect SMC-Mixer to MIDI software.",
+  "type": "commonjs",
+  "dependencies": {
+    "@types/midi": "^2.0.4",
+    "midi": "^2.0.0",
+    "typescript": "^5.9.3"
+  }
 }
