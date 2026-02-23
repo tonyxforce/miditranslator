@@ -3,8 +3,8 @@
 import midi from "midi";
 
 type Enumerate<N extends number, Acc extends number[] = []> = Acc['length'] extends N
-  ? Acc[number]
-  : Enumerate<N, [...Acc, Acc['length']]>
+    ? Acc[number]
+    : Enumerate<N, [...Acc, Acc['length']]>
 
 export type Range<F extends number, T extends number> = Exclude<Enumerate<T>, Enumerate<F>>
 
@@ -139,7 +139,7 @@ const ledIDs: {
     solo: [8, 9, 10, 11, 12, 13, 14, 15],
     rec: [0, 1, 2, 3, 4, 5, 6, 7],
     select: [24, 25, 26, 27, 28, 29, 30, 31],
-    bottom: [94, 93, 95, 91, 92, 46, 47, 96, 97, 98],
+    bottom: [94, 93, 95, 91, 92, 46, 47, 96, 97, 98, 99],
 };
 
 export const constants = {
@@ -174,9 +174,10 @@ class MIDIDevice {
         var portName = portNames.includes(name)
             ? name
             : portNames.find((n) => n.toLowerCase().includes(name.toLowerCase())) as string;
-        if(!portName){
+        if (!portName) {
             throw new Error(`Port named "${name}" not found`);
         }
+        console.log(`Opening output port: ${portName}`);
         this.device.openPort(portNames.indexOf(portName));
     }
     closePort(): void {
@@ -199,6 +200,7 @@ class MIDIInput extends midi.Input {
         var portName = portNames.includes(name)
             ? name
             : portNames.find((n) => n.toLowerCase().includes(name.toLowerCase())) as string;
+        console.log(`Opening input port: ${portName}`);
         this.device.openPort(portNames.indexOf(portName));
         return this;
     }
@@ -234,28 +236,29 @@ class MIDIOutput extends MIDIDevice {
     }
     noteOn(channel: number, note: number, velocity: number) {
         this.device.sendMessage([
-            (commands.NN << 4) | channel,
+            (commands.NN << 4) | 0,
             note,
             velocity,
         ]);
     }
-    noteOff(channel: number, note: number) {
+    noteOff(channel: number, note: number, velocity: number = 0) {
         this.device.sendMessage([
-            (commands.NF << 4) | channel,
+            (commands.NF << 4) | 0,
             note,
-            0,
+            velocity,
         ]);
     }
-    turnLedOn(type: "mute" | "solo" | "rec" | "select" | "bottom", ledID: number, ) {
-        if(ledID < 0 || ledID >= ledIDs[type].length){
+    turnLedOn(type: "mute" | "solo" | "rec" | "select" | "bottom", ledID: number,) {
+        if (ledID < 0 || ledID >= ledIDs[type].length) {
             throw new Error(`LED ID ${ledID} is out of range for type ${type}`);
         }
-        this.noteOn(0, ledIDs[type][ledID] as number, 127);
-        this.noteOff(0, ledIDs[type][ledID] as number);
+        this.noteOff(0, ledIDs[type][ledID] as number, 127);
     }
-    turnLedOff(type: "mute" | "solo" | "rec" | "select" | "bottom", ledID: number, ) {
-        this.noteOn(0, ledIDs[type][ledID] as number, 0);
-        this.noteOff(0, ledIDs[type][ledID] as number);
+    turnLedOff(type: "mute" | "solo" | "rec" | "select" | "bottom", ledID: number,) {
+        if (ledID < 0 || ledID >= ledIDs[type].length) {
+            throw new Error(`LED ID ${ledID} is out of range for type ${type}`);
+        }
+        this.noteOff(0, ledIDs[type][ledID] as number, 0);
     }
     polyAfterTouch(channel: number, note: number, velocity: number) {
         this.device.sendMessage([

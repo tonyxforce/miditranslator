@@ -1,29 +1,23 @@
 /** @format */
 
-import { constants, MIDIOutput, MIDIInput } from "./consts.js";
+import { constants, MIDIOutput, MIDIInput, Range } from "./consts.js";
+
+const commands = constants.commands;
+
+
+const fromConsole = new MIDIInput();
+fromConsole.openPort("SMC-Mixer");
+fromConsole.ignoreTypes(true, true, true)
+const toConsole = new MIDIOutput();
+toConsole.openPort(5);
+
+console.log("output devices:");
+console.log(toConsole.listPorts());
+
+console.log("input devices:");
+console.log(fromConsole.listPorts());
+
 import midi from "midi";
-
-var ledIDs = {
-    mute: [16, 17, 18, 19, 20, 21, 22, 23],
-    solo: [8, 9, 10, 11, 12, 13, 14, 15],
-    rec: [0, 1, 2, 3, 4, 5, 6, 7],
-    select: [24, 25, 26, 27, 28, 29, 30, 31],
-    bottom: [94, 93, 95, 91, 92, 46, 47, 96, 97, 98],
-};
-
-function openPortByName(device: MIDIOutput | midi.Input, name: string, type: string) {
-    var portNames = [];
-    for (let a = 0; a < device.getPortCount(); a++) {
-        portNames.push(device.getPortName(a));
-    }
-
-    var portName = portNames.includes(name)
-        ? name
-        : portNames.find((n) => n.toLowerCase().includes(name.toLowerCase())) as string;
-
-    console.log(`Opening ${type ? type + " " : ""}port "${portName}"`);
-    device.openPort(portNames.indexOf(portName));
-}
 
 function logMessage(message: midi.MidiMessage, type: string | null = null) {
     var data = ["", "", ""];
@@ -33,48 +27,69 @@ function logMessage(message: midi.MidiMessage, type: string | null = null) {
     console.log(`${type ? type : "m"}: ${message}`);
 }
 
+const bankCount = 3;
+var ledStates: {
+    mute: boolean[];
+    solo: boolean[];
+    rec: boolean[];
+    select: boolean[];
+    bottom: boolean[];
+}[] = [{
+    mute: Array(8).fill(false),
+    solo: Array(8).fill(false),
+    rec: Array(8).fill(false),
+    select: Array(8).fill(false),
+    bottom: Array(11).fill(false),
+}];
+var faderStates: number[][] = Array(8).fill(0);
+var bankIndex = 0;
+var banks: {
+    from: MIDIInput[];
+    to: MIDIOutput[];
+} = {
+    from: new Array(bankCount).fill(null).map((e, i) => new MIDIInput().openPort(`consolein${i}`).on("message", (dt: number, message: midi.MidiMessage) => fromSoftware(dt, message, i)).ignoreTypes(true, true, true)) as any,
+    to: new Array(bankCount).fill(null).map((e, i) => new MIDIOutput().openPort(`consoleout${i}`)) as any,
+};
 
-(async () => {
-    const toSoftware = new MIDIOutput();
-    const toConsole = new MIDIOutput();
-    const fromConsole = new MIDIInput();
-    const fromSoftware = new MIDIInput();
+function fromSoftware(deltaTime: number, message: midi.MidiMessage, bankID: number) {
+    const status = message[0];
+    const command = status & 0b11110000; // upper nibble
+    const channel = status & 0b00001111; // lower nibble
 
+    if (command === commands.NF || command === commands.NN) { // LED feedback
+        const note: Range<0, 127> = message[1] as any;
+
+        var buttonRegion: "bottom" | "mute" | "solo" | "rec" | "select" =
+            constants.ledIDs.bottom.includes(note) ? "bottom" :
+                constants.ledIDs.mute.includes(note) ? "mute" :
+                    constants.ledIDs.solo.includes(note) ? "solo" :
+                        constants.ledIDs.rec.includes(note) ? "rec" :
+                            constants.ledIDs.select.includes(note) ? "select" :
+                                "bottom";
+
+        if (!ledStates[bankID]) return; // Make typescript happy
+
+        var buttonID: number = constants.ledIDs[buttonRegion].indexOf(note);
+
+        const velocity: Range<0, 127> = message[2] as any;
+
+        ledStates[bankID][buttonRegion][buttonID] = velocity >= 127;
+
+
+        console.log("fromSoftware", message);
+
+        toConsole.sendMessage([constants.commands.NN + channel, note, velocity]);
+        toConsole.sendMessage([constants.commands.NF + channel, note, velocity]);
+    } else {
+        // Everything else unchanged
+        toConsole.sendMessage(message);
+    }
+}
+; (async () => {
     const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-    console.log("output devices:");
-    console.log(toSoftware.listPorts());
-
-    console.log("input devices:");
-    console.log(fromSoftware.listPorts());
-
-    toSoftware.openPort("consoleout");
-    fromSoftware.openPort("consolein");
-    fromConsole.openPort("SMC-Mixer");
-    toConsole.openPort("SMC-Mixer");
-
-    const commands = constants.commands;
-
-    fromSoftware.on("message", (deltaTime, message) => {
-        const status = message[0];
-        const command = status & 0b11110000; // upper nibble
-        const channel = status & 0b00001111; // lower nibble
-
-        if (command === commands.NF || command === commands.NN) {
-            const note = message[1];
-            const velocity = message[2];
-
-            console.log("fromSoftware", message);
-
-            toConsole.sendMessage([constants.commands.NN + channel, note, velocity]);
-            toConsole.sendMessage([constants.commands.NF + channel, note, velocity]);
-        } else {
-            // Everything else unchanged
-            toConsole.sendMessage(message);
-        }
-    });
-
     fromConsole.on("message", (deltaTime, message) => {
+        console.log("fromConsole", message);
         const status = message[0];
         const command = status & 0b11110000; // upper nibble = type
         const channel = status & 0b00001111; // lower nibble = channel
@@ -92,22 +107,21 @@ function logMessage(message: midi.MidiMessage, type: string | null = null) {
 
             // Build CC message
             const newMessage: midi.MidiMessage = [
-                commands.CC | 0, // CC on channel 0
+                commands.CC | channel, // CC
                 channel, // Controller = original channel
                 value7, // Value = scaled PB
             ];
 
-            toSoftware.sendMessage(newMessage);
+            banks.to[bankIndex]?.sendMessage(newMessage);
         } else {
             if (
                 command == commands.NN ||
                 command == commands.NF ||
                 command == commands.CC
             ) {
-                console.log("fromConsole", message);
             }
             // Pass through everything else unchanged
-            toSoftware.sendMessage(message);
+            banks.to[bankIndex]?.sendMessage(message);
         }
     });
     // Send a MIDI message.
@@ -143,15 +157,5 @@ function logMessage(message: midi.MidiMessage, type: string | null = null) {
         await delay(100);
     }
 
-    // Ignore sysex, timing, and active sensing messages
-    fromSoftware.ignoreTypes(true, true, true);
-    fromConsole.ignoreTypes(true, true, true);
-
     console.log("Ready!");
-
-    /*     console.log(`CC ${0} ${0}`);
-	for(let b = 0; b<0b00001111;b++)
-    for (let a = 0; a < 255; a++) {
-        toConsole.sendMessage([constants.commands.CC + b, a, 127]);
-    } */
 })();
